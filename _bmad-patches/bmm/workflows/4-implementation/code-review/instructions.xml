@@ -1,0 +1,342 @@
+<workflow>
+  <critical>The workflow execution engine is governed by: {project-root}/_bmad/core/tasks/workflow.xml</critical>
+  <critical>You MUST have already loaded and processed: {installed_path}/workflow.yaml</critical>
+  <critical>Communicate all responses in {communication_language} and language MUST be tailored to {user_skill_level}</critical>
+  <critical>Generate all documents in {document_output_language}</critical>
+
+  <critical>🔥 YOU ARE AN ADVERSARIAL CODE REVIEWER - Find what's wrong or missing! 🔥</critical>
+  <critical>Your purpose: Validate story file claims against actual implementation</critical>
+  <critical>Challenge everything: Are tasks marked [x] actually done? Are ACs really implemented?</critical>
+  <critical>Find 3-10 specific issues in every review minimum - no lazy "looks good" reviews - YOU are so much better than the dev agent
+    that wrote this slop</critical>
+  <critical>Read EVERY file in the File List - verify implementation against story requirements</critical>
+  <critical>Tasks marked complete but not done = CRITICAL finding</critical>
+  <critical>Acceptance Criteria not implemented = HIGH severity finding</critical>
+  <critical>Do not review files that are not part of the application's source code. Always exclude the _bmad/ and _bmad-output/ folders from the review. Always exclude IDE and CLI configuration folders like .cursor/ and .windsurf/ and .claude/</critical>
+
+
+  <step n="1" goal="Load story and discover changes">
+    <action>Use provided {{story_path}} or ask user which story file to review</action>
+    <action>Read COMPLETE story file</action>
+    <action>Set {{story_key}} = extracted key from filename (e.g., "1-2-user-authentication.md" → "1-2-user-authentication") or story
+      metadata</action>
+    <action>Parse sections: Story, Acceptance Criteria, Tasks/Subtasks, Dev Agent Record → File List, Change Log</action>
+
+    <!-- Discover actual changes via git -->
+    <action>Check if git repository detected in current directory</action>
+    <check if="git repository exists">
+      <action>Run `git status --porcelain` to find uncommitted changes</action>
+      <action>Run `git diff --name-only` to see modified files</action>
+      <action>Run `git diff --cached --name-only` to see staged files</action>
+      <action>Compile list of actually changed files from git output</action>
+    </check>
+
+    <!-- Cross-reference story File List vs git reality -->
+    <action>Compare story's Dev Agent Record → File List with actual git changes</action>
+    <action>Note discrepancies:
+      - Files in git but not in story File List
+      - Files in story File List but no git changes
+      - Missing documentation of what was actually changed
+    </action>
+
+    <invoke-protocol name="discover_inputs" />
+    <action>Load {project_context} for coding standards (if exists)</action>
+  </step>
+
+  <step n="2" goal="Build review attack plan">
+    <action>Extract ALL Acceptance Criteria from story</action>
+    <action>Extract ALL Tasks/Subtasks with completion status ([x] vs [ ])</action>
+    <action>From Dev Agent Record → File List, compile list of claimed changes</action>
+
+    <action>Create review plan:
+      1. **AC Validation**: Verify each AC is actually implemented
+      2. **Task Audit**: Verify each [x] task is really done
+      3. **Code Quality**: Security, performance, maintainability
+      4. **Test Quality**: Real tests vs placeholder bullshit
+    </action>
+  </step>
+
+  <step n="3" goal="Execute adversarial review">
+    <critical>VALIDATE EVERY CLAIM - Check git reality vs story claims</critical>
+
+    <!-- Git vs Story Discrepancies -->
+    <action>Review git vs story File List discrepancies:
+      1. **Files changed but not in story File List** → MEDIUM finding (incomplete documentation)
+      2. **Story lists files but no git changes** → HIGH finding (false claims)
+      3. **Uncommitted changes not documented** → MEDIUM finding (transparency issue)
+    </action>
+
+    <!-- Use combined file list: story File List + git discovered files -->
+    <action>Create comprehensive review file list from story File List and git changes</action>
+
+    <!-- AC Validation -->
+    <action>For EACH Acceptance Criterion:
+      1. Read the AC requirement
+      2. Search implementation files for evidence
+      3. Determine: IMPLEMENTED, PARTIAL, or MISSING
+      4. If MISSING/PARTIAL → HIGH SEVERITY finding
+    </action>
+
+    <!-- Task Completion Audit -->
+    <action>For EACH task marked [x]:
+      1. Read the task description
+      2. Search files for evidence it was actually done
+      3. **CRITICAL**: If marked [x] but NOT DONE → CRITICAL finding
+      4. Record specific proof (file:line)
+    </action>
+
+    <!-- Code Quality Deep Dive -->
+    <action>For EACH file in comprehensive review list:
+      1. **Security**: Look for injection risks, missing validation, auth issues
+      2. **Performance**: N+1 queries, inefficient loops, missing caching
+      3. **Error Handling**: Missing try/catch, poor error messages
+      4. **Code Quality**: Complex functions, magic numbers, poor naming
+      5. **Test Quality**: Are tests real assertions or placeholders?
+    </action>
+
+    <check if="total_issues_found lt 3">
+      <critical>NOT LOOKING HARD ENOUGH - Find more problems!</critical>
+      <action>Re-examine code for:
+        - Edge cases and null handling
+        - Architecture violations
+        - Documentation gaps
+        - Integration issues
+        - Dependency problems
+        - Git commit message quality (if applicable)
+      </action>
+      <action>Find at least 3 more specific, actionable issues</action>
+    </check>
+  </step>
+
+  <step n="4" goal="Present findings and fix them">
+    <action>Categorize findings: HIGH (must fix), MEDIUM (should fix), LOW (nice to fix)</action>
+    <action>Set {{fixed_count}} = 0</action>
+    <action>Set {{action_count}} = 0</action>
+
+    <output>**🔥 CODE REVIEW FINDINGS, {user_name}!**
+
+      **Story:** {{story_file}}
+      **Git vs Story Discrepancies:** {{git_discrepancy_count}} found
+      **Issues Found:** {{high_count}} High, {{medium_count}} Medium, {{low_count}} Low
+
+      ## 🔴 CRITICAL ISSUES
+      - Tasks marked [x] but not actually implemented
+      - Acceptance Criteria not implemented
+      - Story claims files changed but no git evidence
+      - Security vulnerabilities
+
+      ## 🟡 MEDIUM ISSUES
+      - Files changed but not documented in story File List
+      - Uncommitted changes not tracked
+      - Performance problems
+      - Poor test coverage/quality
+      - Code maintainability issues
+
+      ## 🟢 LOW ISSUES
+      - Code style improvements
+      - Documentation gaps
+      - Git commit message quality
+    </output>
+
+    <ask>What should I do with these issues?
+
+      1. **Fix them automatically** - I'll update the code and tests
+      2. **Create action items** - Add to story Tasks/Subtasks for later
+      3. **Show me details** - Deep dive into specific issues
+
+      Choose [1], [2], or specify which issue to examine:</ask>
+
+    <check if="user chooses 1">
+      <action>Fix all HIGH and MEDIUM issues in the code</action>
+      <action>Add/update tests as needed</action>
+      <action>Update File List in story if files changed</action>
+      <action>Update story Dev Agent Record with fixes applied</action>
+      <action>Set {{fixed_count}} = number of HIGH and MEDIUM issues fixed</action>
+      <action>Set {{action_count}} = 0</action>
+    </check>
+
+    <check if="user chooses 2">
+      <action>Add "Review Follow-ups (AI)" subsection to Tasks/Subtasks</action>
+      <action>For each issue: `- [ ] [AI-Review][Severity] Description [file:line]`</action>
+      <action>Set {{action_count}} = number of action items created</action>
+      <action>Set {{fixed_count}} = 0</action>
+    </check>
+
+    <check if="user chooses 3">
+      <action>Show detailed explanation with code examples</action>
+      <action>Return to fix decision</action>
+    </check>
+  </step>
+
+  <step n="5" goal="SonarQube Quality Gate after fixes">
+    <critical>SonarQube gate is MANDATORY after code review fixes. You MUST run it. Only skip if Docker is genuinely unavailable.</critical>
+    <check if="{{fixed_count}} > 0 OR {{action_count}} == 0">
+      <!-- Only run SonarQube if we fixed code or if the review approved with no issues -->
+      <action>Run: docker compose -f docker-compose.sonar.yml ps 2>&amp;1</action>
+      <action>Check output for a running sonarqube container (any status containing "running", "healthy", or "Up")</action>
+
+      <check if="sonarqube container is running">
+        <action>Verify SonarQube API: curl -s http://localhost:9000/api/system/status</action>
+        <check if="API returns status UP">
+          <!-- SCAN PHASE -->
+          <action>Run the full pipeline: bash scripts/run_sonar_pipeline.sh</action>
+          <action>Wait 10 seconds for server processing: sleep 10</action>
+
+          <!-- QUERY PHASE -->
+          <action>Query quality gate: curl -s -u "$(grep SONAR_TOKEN .env | cut -d= -f2):" "http://localhost:9000/api/qualitygates/project_status?projectKey=laurianbot"</action>
+          <action>Query open issues: curl -s -u "$(grep SONAR_TOKEN .env | cut -d= -f2):" "http://localhost:9000/api/issues/search?componentKeys=laurianbot&amp;resolved=false&amp;ps=50"</action>
+          <action>Parse the JSON — count the "total" field for open issues</action>
+
+          <!-- FIX LOOP (up to 2 passes) — identical contract to dev-story step 9 -->
+          <check if="open issues found (total > 0)">
+            <critical>DO NOT SKIP — you MUST fix these issues before finalizing the review</critical>
+            <action>For EACH reported issue:
+              1. Read the file and line cited by SonarQube
+              2. Understand the rule violated (S1192, S3776, S1172, etc.)
+              3. Apply the minimal fix (extract constant, reduce complexity, remove unused param, etc.)
+              4. Run the specific test file to confirm no regression
+            </action>
+            <action>After all fixes: re-run full test suite to confirm zero regressions</action>
+            <action>Re-run SonarQube pipeline: bash scripts/run_sonar_pipeline.sh</action>
+            <action>Wait 10 seconds, then re-query issues</action>
+
+            <check if="issues still remain after first fix pass">
+              <action>Repeat: fix remaining issues, re-run tests, re-run pipeline, re-query</action>
+            </check>
+
+            <check if="issues still remain after second fix pass">
+              <action>HALT — Report remaining SonarQube issues to {user_name}: "SonarQube gate blocked after 2 fix passes. Remaining issues: {{issue_list}}"</action>
+            </check>
+          </check>
+
+          <action>Record in story Change Log: "SonarQube gate: zero open issues (scanned on {{date}})"</action>
+          <output>✅ SonarQube Quality Gate passed — zero open issues</output>
+        </check>
+        <check if="API does not respond or returns non-UP status">
+          <output>⚠️ SonarQube API unreachable — skipping gate</output>
+        </check>
+      </check>
+
+      <check if="sonarqube container is NOT running or docker unavailable">
+        <output>⚠️ SonarQube not running — skipping gate. To enable: docker compose -f docker-compose.sonar.yml up -d</output>
+      </check>
+    </check>
+  </step>
+
+  <step n="6" goal="Update story status and sync sprint tracking">
+    <!-- Determine new status based on review outcome -->
+    <check if="all HIGH and MEDIUM issues fixed AND all ACs implemented">
+      <action>Set {{new_status}} = "done"</action>
+      <action>Update story Status field to "done"</action>
+    </check>
+    <check if="HIGH or MEDIUM issues remain OR ACs not fully implemented">
+      <action>Set {{new_status}} = "in-progress"</action>
+      <action>Update story Status field to "in-progress"</action>
+    </check>
+    <action>Save story file</action>
+
+    <!-- Determine sprint tracking status -->
+    <check if="{sprint_status} file exists">
+      <action>Set {{current_sprint_status}} = "enabled"</action>
+    </check>
+    <check if="{sprint_status} file does NOT exist">
+      <action>Set {{current_sprint_status}} = "no-sprint-tracking"</action>
+    </check>
+
+    <!-- Sync sprint-status.yaml when story status changes (only if sprint tracking enabled) -->
+    <check if="{{current_sprint_status}} != 'no-sprint-tracking'">
+      <action>Load the FULL file: {sprint_status}</action>
+      <action>Find development_status key matching {{story_key}}</action>
+
+      <check if="{{new_status}} == 'done'">
+        <action>Update development_status[{{story_key}}] = "done"</action>
+        <action>Save file, preserving ALL comments and structure</action>
+        <output>✅ Sprint status synced: {{story_key}} → done</output>
+      </check>
+
+      <check if="{{new_status}} == 'in-progress'">
+        <action>Update development_status[{{story_key}}] = "in-progress"</action>
+        <action>Save file, preserving ALL comments and structure</action>
+        <output>🔄 Sprint status synced: {{story_key}} → in-progress</output>
+      </check>
+
+      <check if="story key not found in sprint status">
+        <output>⚠️ Story file updated, but sprint-status sync failed: {{story_key}} not found in sprint-status.yaml</output>
+      </check>
+    </check>
+
+    <check if="{{current_sprint_status}} == 'no-sprint-tracking'">
+      <output>ℹ️ Story status updated (no sprint tracking configured)</output>
+    </check>
+
+    <output>**✅ Review Complete!**
+
+      **Story Status:** {{new_status}}
+      **Issues Fixed:** {{fixed_count}}
+      **Action Items Created:** {{action_count}}
+
+      {{#if new_status == "done"}}Code review complete!{{else}}Address the action items and continue development.{{/if}}
+    </output>
+  </step>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       STEP 7 — Git commit + session handoff
+       ═══════════════════════════════════════════════════════════════ -->
+  <step id="7" name="Git commit et handoff">
+    <description>
+      Committer les changements en git et écrire HANDOFF.md pour la prochaine session.
+    </description>
+
+    <action>From the story file, collect the list of changed source files (File List section or acceptance criteria mentions)</action>
+    <action>Stage story file, sprint-status.yaml, and all source files identified</action>
+
+    <check if="{{new_status}} == 'done'">
+      <action>Run: git add {story_file} _bmad-output/implementation-artifacts/sprint-status.yaml {source_files}</action>
+      <action>Run: git commit -m "feat: Story {{story_id}} — {{story_title}}"</action>
+      <output>✅ Commit créé : feat: Story {{story_id}} — {{story_title}}</output>
+
+      <template-output dest="{project-root}/HANDOFF.md">
+# Session Handoff — {date}
+
+## Complété cette session
+Story {{story_id}} — {{story_title}}
+Statut : **done** ✅
+
+## Prochaine étape — NOUVELLE SESSION (contexte vide)
+→ Lancer : `/bmad-bmm-sprint-status` pour voir la prochaine story disponible
+
+## Décisions techniques clés (code review)
+{{issues_summary}}
+
+## État sprint
+{{sprint_progress_summary}}
+      </template-output>
+    </check>
+
+    <check if="{{new_status}} == 'in-progress'">
+      <action>Run: git add {story_file} _bmad-output/implementation-artifacts/sprint-status.yaml</action>
+      <action>Run: git commit -m "review: Story {{story_id}} — issues to fix ({{fixed_count}} fixed, {{action_count}} pending)"</action>
+      <output>✅ Commit créé : review: Story {{story_id}}</output>
+
+      <template-output dest="{project-root}/HANDOFF.md">
+# Session Handoff — {date}
+
+## En cours cette session
+Story {{story_id}} — {{story_title}}
+Statut : **in-progress** 🔄 (review issues à corriger)
+
+## Prochaine étape — NOUVELLE SESSION (contexte vide)
+→ Lancer : `/bmad-bmm-dev-story` pour corriger les issues du code review
+
+## Issues à corriger ({{action_count}} pendantes)
+{{action_items_summary}}
+
+## Décisions techniques clés (code review)
+{{issues_summary}}
+      </template-output>
+    </check>
+
+    <output>📋 **HANDOFF.md écrit** — prêt pour la prochaine session</output>
+  </step>
+
+</workflow>

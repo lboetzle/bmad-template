@@ -15,7 +15,8 @@ python install.py "Mon Projet"
 - Verifie/installe `uv` (gestionnaire Python)
 - Cree le venv
 - Personnalise le projet (nom, pyproject.toml, CLAUDE.md)
-- Genere la couche nav Obsidian (`_nav/`)
+- Installe BMAD via `npx bmad-method install --full`
+- Applique les patches BMAD (session handoff, git commit automatique)
 - Telecharge et configure le plugin Kanban pour Obsidian
 
 ## Prerequis
@@ -23,10 +24,10 @@ python install.py "Mon Projet"
 | Outil | Requis | Installation |
 |-------|--------|--------------|
 | Python 3.11+ | oui | https://python.org |
+| Node.js 20+ | oui | https://nodejs.org (LTS) |
 | git | oui | https://git-scm.com |
 | Claude Code | oui | https://claude.ai/code |
-| BMAD | oui | https://github.com/bmad-method/bmad-method |
-| Obsidian | oui | https://obsidian.md |
+| Obsidian | recommande | https://obsidian.md |
 | uv | auto | installe par `install.py` si absent |
 
 ## Contenu du template
@@ -37,6 +38,12 @@ scripts/
   generate_nav.py                    <- generateur _nav/ (PostToolUse hook)
   log_session.py                     <- journal de session Claude Code
   setup.py                           <- personnalisation projet (appele par install.py)
+_bmad-patches/                       <- patches BMAD appliques apres install
+  bmm/workflows/4-implementation/
+    dev-story/instructions.xml       <- Step 10 : generation HANDOFF.md
+    code-review/instructions.xml     <- Step 7 : git commit + HANDOFF.md
+  _config/agents/
+    bmm-dev.customize.yaml           <- lecture HANDOFF.md au demarrage
 .claude/
   settings.json                      <- hooks PostToolUse (auto-declenchement)
 .obsidian/
@@ -69,8 +76,26 @@ Dans Claude Code :
   /bmad-bmm-create-epics-and-stories
   /bmad-bmm-sprint-planning
   /bmad-bmm-dev-story              <- repeter par story
+  /bmad-bmm-code-review            <- apres chaque story
   /bmad-bmm-retrospective          <- en fin d'epic
 ```
+
+## Patches BMAD inclus
+
+Ce template inclut 3 patches appliques automatiquement sur les workflows BMAD :
+
+### 1. Session Handoff (HANDOFF.md)
+Genere un fichier `HANDOFF.md` a la fin de chaque session (dev-story Step 10
+et code-review Step 7). Contient : story en cours, prochaine commande a lancer,
+decisions cles. Lu automatiquement par l'agent au demarrage de la session suivante.
+
+### 2. Git commit automatique (code-review Step 7)
+Apres un code review accepte (story -> done), commit automatique :
+`feat: Story X.Y -- titre`
+
+### 3. Agent customization (bmm-dev.customize.yaml)
+L'agent dev lis HANDOFF.md au debut de chaque session pour reprendre
+le contexte sans recharger tout le projet manuellement.
 
 ## Navigation Obsidian
 
@@ -95,6 +120,15 @@ Pour forcer la regeneration :
 python scripts/generate_nav.py --force
 ```
 
+## Options d'installation
+
+```
+python install.py "Mon Projet"              # installation complete
+python install.py "Mon Projet" --no-kanban  # sans telechargement plugin
+python install.py "Mon Projet" --no-bmad    # sans npx bmad-method install
+python install.py                            # demande le nom interactivement
+```
+
 ## Mise a jour du template
 
 Pour recuperer les ameliorations du template dans un projet existant :
@@ -104,12 +138,5 @@ git fetch template
 git checkout template/main -- scripts/generate_nav.py scripts/log_session.py
 git checkout template/main -- .claude/settings.json .obsidian/app.json .obsidian/graph.json
 git checkout template/main -- install.py scripts/setup.py
-```
-
-## Options d'installation
-
-```
-python install.py "Mon Projet"              # installation complete
-python install.py "Mon Projet" --no-kanban  # sans telechargement plugin
-python install.py                            # demande le nom interactivement
+git checkout template/main -- _bmad-patches/
 ```
