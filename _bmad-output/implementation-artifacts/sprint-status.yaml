@@ -1,0 +1,13 @@
+# Sprint Status — {{PROJECT_NAME}}
+# Fichier géré par BMAD. Les commentaires "# Epic N: Nom" sont auto-lus par generate_nav.py.
+# Ne pas modifier le bloc development_status manuellement.
+
+project: "{{PROJECT_NAME}}"
+version: "0.1.0"
+
+development_status:
+  # Les stories apparaîtront ici lors du sprint planning BMAD.
+  # Format : <stem-du-fichier-story>: <statut>
+  # Exemple :
+  # 1-1-ma-premiere-story: done
+  # 1-2-ma-deuxieme-story: in-progress

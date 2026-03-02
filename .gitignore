@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.venv/
+
+# Runtime data
+data/
+*.db
+logs/
+
+# Sessions Claude Code (etat interne)
+docs/sessions/.state.json
+
+# Environnement
+.env
+.env.local
+
+# Caches outils
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.scannerwork/
+
+# OS
+.DS_Store
+Thumbs.db

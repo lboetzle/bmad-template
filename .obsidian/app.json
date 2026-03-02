@@ -1,0 +1,9 @@
+{
+  "userIgnoreFilters": [
+    "src/",
+    "tests/",
+    ".git",
+    ".venv",
+    "node_modules"
+  ]
+}
