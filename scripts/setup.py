@@ -45,12 +45,16 @@ def main() -> None:
 
     print(f"\n[setup] Projet : {project_name} ({slug})\n")
 
-    # 1. Remplacer le placeholder dans sprint-status.yaml
+    # 1. Remplacer les placeholders dans les fichiers de configuration
     replace_in_file(
         ROOT / "_bmad-output" / "implementation-artifacts" / "sprint-status.yaml",
         "{{PROJECT_NAME}}",
         project_name,
     )
+
+    sonar_props = ROOT / "sonar-project.properties"
+    replace_in_file(sonar_props, "{{PROJECT_SLUG}}", slug)
+    replace_in_file(sonar_props, "{{PROJECT_NAME}}", project_name)
 
     # 2. pyproject.toml
     pyproject = ROOT / "pyproject.toml"

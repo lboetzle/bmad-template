@@ -28,6 +28,12 @@ coverage.xml
 htmlcov/
 .scannerwork/
 
+# SonarQube rapports generes (non versionnables)
+ruff-sonar.json
+mypy-sonar.json
+ruff-report-raw.json
+mypy-report-raw.json
+
 # Obsidian plugin binaries (telecharges par install.py, ne pas versionner)
 .obsidian/plugins/obsidian-kanban/main.js
 .obsidian/plugins/obsidian-kanban/styles.css

@@ -1,24 +1,28 @@
 #!/usr/bin/env python3
 """
-install.py -- Installation one-shot : BMAD + Obsidian nav + Kanban.
+install.py -- Installation one-shot : BMAD + Obsidian nav + Kanban + SonarQube.
 
 Usage (apres avoir clone le template) :
   python install.py "Mon Projet"
   python install.py "Mon Projet" --no-kanban   # sans telechargement du plugin
   python install.py "Mon Projet" --no-bmad     # sans npx bmad-method install
+  python install.py "Mon Projet" --no-sonar    # sans SonarQube
 
 Ce script :
-  1. Verifie et installe les prerequis (uv, git, node)
+  1. Verifie et installe les prerequis (uv, git, node, docker)
   2. Cree le venv Python
-  3. Personnalise le projet (nom, pyproject.toml, CLAUDE.md)
+  3. Personnalise le projet (nom, pyproject.toml, CLAUDE.md, sonar-project.properties)
   4. Installe BMAD via npx bmad-method install --full
   5. Applique les patches BMAD (workflows + agent customize)
   6. Telecharge et configure le plugin Kanban pour Obsidian
-  7. Affiche les instructions pour Claude Code + BMAD
+  7. Demarre SonarQube (docker compose up) et attend qu'il soit pret
+  8. Provisionne SonarQube (projet + token + quality gate + .env)
+  9. Lance le pipeline qualite complet (pytest + ruff + mypy + scanner)
 
 Prerequis minimaux :
   - Python 3.11+ (pour lancer ce script)
   - Node.js 20+ (pour npx bmad-method install)
+  - Docker Desktop (pour SonarQube)
   - Internet (pour uv si non installe + BMAD + plugin Kanban)
 """
 from __future__ import annotations
@@ -31,6 +35,8 @@ import re
 import shutil
 import subprocess
 import sys
+import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -70,6 +76,17 @@ def run(cmd: list[str], label: str, cwd: Path = ROOT, check: bool = True) -> boo
     return False
 
 
+def run_visible(cmd: list[str], label: str, cwd: Path = ROOT) -> bool:
+    """Run a command with live output (for long-running steps)."""
+    print(f"  >> {label}")
+    result = subprocess.run(cmd, cwd=cwd)
+    if result.returncode == 0:
+        print(_c(f"  + {label} OK", "32"))
+        return True
+    print(_c(f"  x {label} ERREUR", "31"))
+    return False
+
+
 def download(url: str, dest: Path, label: str) -> bool:
     print(f"  >> {label} ...", end=" ", flush=True)
     try:
@@ -95,8 +112,8 @@ def venv_python() -> Path | None:
 
 # --- Etapes -------------------------------------------------------------------
 
-def step_prerequisites() -> tuple[str | None, bool, bool]:
-    """Retourne (chemin_uv_ou_None, git_ok, node_ok)."""
+def step_prerequisites() -> tuple[str | None, bool, bool, bool]:
+    """Retourne (uv_path, git_ok, node_ok, docker_ok)."""
     HEAD("1. Prerequis")
 
     # git
@@ -109,26 +126,42 @@ def step_prerequisites() -> tuple[str | None, bool, bool]:
             print("    -> winget install --id Git.Git -e")
         else:
             print("    -> brew install git  /  apt install git")
-        print("    Installe git puis relance install.py")
 
     # node
     node = shutil.which("node")
     node_ok = False
     if node:
         result = subprocess.run([node, "--version"], capture_output=True, text=True)
-        version_str = result.stdout.strip()  # ex: v20.11.0
+        version_str = result.stdout.strip()
         try:
             major = int(version_str.lstrip("v").split(".")[0])
             node_ok = major >= 20
             if node_ok:
                 OK(f"node {version_str}")
             else:
-                WARN(f"node {version_str} trop ancien (requis >= 20) -- BMAD sera ignore")
+                WARN(f"node {version_str} trop ancien (requis >= 20) -- BMAD ignore")
         except ValueError:
-            WARN("node version non lisible -- BMAD sera ignore")
+            WARN("node version non lisible -- BMAD ignore")
     else:
-        WARN("node non trouve -- BMAD sera ignore")
+        WARN("node non trouve -- BMAD ignore")
         print("    -> https://nodejs.org  (LTS >= 20)")
+
+    # docker
+    docker = shutil.which("docker")
+    docker_ok = False
+    if docker:
+        result = subprocess.run(
+            [docker, "info"], capture_output=True, text=True
+        )
+        docker_ok = result.returncode == 0
+        if docker_ok:
+            OK("docker (daemon running)")
+        else:
+            WARN("docker installe mais daemon non accessible")
+            print("    -> Demarre Docker Desktop puis relance install.py")
+    else:
+        WARN("docker non trouve -- SonarQube ignore")
+        print("    -> https://www.docker.com/products/docker-desktop")
 
     # uv
     uv = shutil.which("uv")
@@ -157,7 +190,7 @@ def step_prerequisites() -> tuple[str | None, bool, bool]:
             WARN("uv toujours introuvable -- utilisation de python -m venv comme secours")
             uv = None
 
-    return uv, git_ok, node_ok
+    return uv, git_ok, node_ok, docker_ok
 
 
 def step_venv(uv: str | None) -> None:
@@ -182,7 +215,6 @@ def step_bmad(node_ok: bool) -> None:
     HEAD("4. Installation BMAD")
     if not node_ok:
         WARN("Node.js >= 20 requis -- etape BMAD ignoree")
-        WARN("Installe Node.js LTS puis relance install.py")
         return
 
     bmad_dir = ROOT / "_bmad"
@@ -220,7 +252,7 @@ def step_bmad_patches() -> None:
 
     applied = 0
     for src in patches_dir.rglob("*"):
-        if not src.is_file():
+        if not src.is_file() or src.name == "README.md":
             continue
         rel = src.relative_to(patches_dir)
         dest = bmad_dir / rel
@@ -250,7 +282,6 @@ def step_kanban() -> None:
         ok = download(f"{base}/{fname}", dest, f"kanban/{fname}")
         success = success and ok
 
-    # community-plugins.json
     cp_file = ROOT / ".obsidian" / "community-plugins.json"
     if cp_file.exists():
         try:
@@ -272,8 +303,175 @@ def step_kanban() -> None:
         WARN("Installe le plugin manuellement : Obsidian > Parametres > Plugins communautaires > Kanban")
 
 
-def step_summary(project_name: str) -> None:
+# ---------------------------------------------------------------------------
+# SonarQube steps
+# ---------------------------------------------------------------------------
+
+SONAR_URL = "http://localhost:9000"
+SONAR_COMPOSE = "docker-compose.sonar.yml"
+_SONAR_TIMEOUT = 300  # 5 minutes max wait
+
+
+def _sonar_is_up() -> bool:
+    """Check if SonarQube is ready (status=UP)."""
+    try:
+        with urllib.request.urlopen(
+            f"{SONAR_URL}/api/system/status", timeout=5
+        ) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+            return data.get("status") == "UP"
+    except Exception:
+        return False
+
+
+def _env_has_token() -> bool:
+    """Return True if .env already contains a non-empty SONAR_TOKEN."""
+    env_file = ROOT / ".env"
+    if not env_file.exists():
+        return False
+    for line in env_file.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if line.startswith("SONAR_TOKEN="):
+            token = line.partition("=")[2].strip()
+            return bool(token)
+    return False
+
+
+def step_sonar_start(docker_ok: bool) -> bool:
+    """Start SonarQube via docker compose and wait for it to be ready.
+
+    Returns True if SonarQube is up and ready, False otherwise.
+    """
+    HEAD("7. SonarQube -- demarrage")
+
+    if not docker_ok:
+        WARN("Docker non disponible -- etape SonarQube ignoree")
+        return False
+
+    compose_file = ROOT / SONAR_COMPOSE
+    if not compose_file.exists():
+        WARN(f"{SONAR_COMPOSE} non trouve -- etape SonarQube ignoree")
+        return False
+
+    # Already up?
+    if _sonar_is_up():
+        OK("SonarQube deja pret")
+        return True
+
+    print("  >> docker compose up -d ...", end=" ", flush=True)
+    result = subprocess.run(
+        ["docker", "compose", "-f", SONAR_COMPOSE, "up", "-d"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        print(_c("ERREUR", "31"))
+        if result.stderr.strip():
+            print(f"    {result.stderr.strip()[:300]}")
+        return False
+    print(_c("OK", "32"))
+
+    # Wait for UP (can take 2-3 minutes on first run)
+    print(f"  >> Attente SonarQube (jusqu'a {_SONAR_TIMEOUT}s)...", end=" ", flush=True)
+    start = time.time()
+    dots = 0
+    while time.time() - start < _SONAR_TIMEOUT:
+        if _sonar_is_up():
+            elapsed = int(time.time() - start)
+            print(_c(f" UP ({elapsed}s)", "32"))
+            OK(f"SonarQube pret en {elapsed}s")
+            return True
+        time.sleep(10)
+        dots += 1
+        if dots % 6 == 0:
+            print(".", end="", flush=True)
+
+    print(_c(" TIMEOUT", "31"))
+    WARN(f"SonarQube n'a pas demarre en {_SONAR_TIMEOUT}s")
+    WARN("Verifie : docker compose -f docker-compose.sonar.yml logs sonarqube")
+    return False
+
+
+def step_sonar_provision(project_slug: str, project_name: str) -> bool:
+    """Provision SonarQube: create project + token + quality gate + write .env.
+
+    Idempotent: skips if .env already has SONAR_TOKEN.
+
+    Returns True on success.
+    """
+    HEAD("8. SonarQube -- provisionnement")
+
+    if _env_has_token():
+        OK(".env contient deja SONAR_TOKEN -- provisionnement ignore")
+        return True
+
+    py = venv_python() or Path(sys.executable)
+    result = subprocess.run(
+        [
+            str(py), "scripts/sonar_setup.py",
+            "--init",
+            "--url", SONAR_URL,
+            "--project-key", project_slug,
+            "--project-name", project_name,
+            "--env-file", ".env",
+        ],
+        cwd=ROOT,
+    )
+    if result.returncode == 0:
+        OK("SonarQube provisionne avec succes")
+        return True
+    else:
+        WARN("Provisionnement SonarQube echoue")
+        WARN("Lance manuellement : python scripts/sonar_setup.py --init "
+             f"--project-key {project_slug} --project-name \"{project_name}\"")
+        return False
+
+
+def step_sonar_pipeline() -> bool:
+    """Run the full quality pipeline (pytest + ruff + mypy + sonar-scanner).
+
+    Returns True if all steps passed.
+    """
+    HEAD("9. SonarQube -- pipeline qualite")
+
+    pipeline = ROOT / "scripts" / "run_sonar_pipeline.sh"
+    if not pipeline.exists():
+        WARN("run_sonar_pipeline.sh non trouve")
+        return False
+
+    bash = shutil.which("bash")
+    if not bash:
+        WARN("bash non trouve -- pipeline ignore")
+        WARN("Lance manuellement : bash scripts/run_sonar_pipeline.sh")
+        return False
+
+    result = subprocess.run([bash, str(pipeline)], cwd=ROOT)
+    if result.returncode == 0:
+        OK("Pipeline qualite reussi")
+        return True
+    else:
+        WARN("Une ou plusieurs etapes du pipeline ont echoue")
+        WARN(f"Dashboard : {SONAR_URL}/dashboard")
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Summary
+# ---------------------------------------------------------------------------
+
+def step_summary(project_name: str, project_slug: str, sonar_ok: bool) -> None:
     sep = "=" * 60
+    sonar_note = (
+        f"  D. SonarQube : {SONAR_URL}/dashboard?id={project_slug}\n"
+        f"     Pipeline   : bash scripts/run_sonar_pipeline.sh"
+    ) if sonar_ok else (
+        "  D. SonarQube non configure.\n"
+        "     Pour l'activer : docker compose -f docker-compose.sonar.yml up -d\n"
+        "     Puis            : python scripts/sonar_setup.py --init "
+        f"--project-key {project_slug} --project-name \"{project_name}\""
+    )
+
     print(f"""
 {_c(sep, "32")}
 {_c("Installation terminee !", "32;1")}
@@ -300,9 +498,7 @@ Prochaines etapes :
      Si les commandes /bmad-* sont absentes :
      -> https://github.com/bmad-method/bmad-method
 
-  D. La vue Kanban est dans _nav/kanban.md
-     Elle se regenere automatiquement apres chaque story BMAD.
-     Pour forcer : python scripts/generate_nav.py --force
+{sonar_note}
 
 {sep}
 """)
@@ -312,7 +508,7 @@ Prochaines etapes :
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Installation one-shot BMAD + Obsidian nav + Kanban",
+        description="Installation one-shot BMAD + Obsidian nav + Kanban + SonarQube",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -328,6 +524,10 @@ def main() -> None:
         "--no-bmad", action="store_true",
         help="Ignorer l'installation BMAD (npx bmad-method install)",
     )
+    parser.add_argument(
+        "--no-sonar", action="store_true",
+        help="Ignorer SonarQube (docker compose + provisionnement + pipeline)",
+    )
     args = parser.parse_args()
 
     project_name = args.name.strip()
@@ -338,11 +538,13 @@ def main() -> None:
             print()
             sys.exit(0)
     if not project_name:
-        project_name = ROOT.name  # fallback: nom du dossier
+        project_name = ROOT.name
+
+    project_slug = slugify(project_name)
 
     print(_c(f"\n=== BMAD Template -- Installation de '{project_name}' ===", "36;1"))
 
-    uv, _git_ok, node_ok = step_prerequisites()
+    uv, _git_ok, node_ok, docker_ok = step_prerequisites()
     step_venv(uv)
     step_setup(project_name)
     if not args.no_bmad:
@@ -350,7 +552,17 @@ def main() -> None:
         step_bmad_patches()
     if not args.no_kanban:
         step_kanban()
-    step_summary(project_name)
+
+    sonar_ok = False
+    if not args.no_sonar:
+        sonar_started = step_sonar_start(docker_ok)
+        if sonar_started:
+            provisioned = step_sonar_provision(project_slug, project_name)
+            if provisioned:
+                step_sonar_pipeline()
+                sonar_ok = True
+
+    step_summary(project_name, project_slug, sonar_ok)
 
 
 if __name__ == "__main__":
