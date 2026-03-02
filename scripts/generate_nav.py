@@ -704,6 +704,77 @@ def gen_hierarchy_canvas(
     out.write_text(json.dumps(canvas, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
+# ─── Kanban Obsidian ─────────────────────────────────────────────────────────
+
+def gen_kanban(
+    stories_by_epic: dict[int, list[dict]],
+    epic_statuses: dict[int, str],
+    now: str,
+) -> None:
+    """
+    Génère _nav/kanban.md au format Obsidian Kanban plugin (mgmeyers/obsidian-kanban).
+
+    Colonnes : Backlog | In Progress | Review | Done (2 derniers épics seulement).
+    Prérequis Obsidian : plugin communautaire "Kanban" by Marcus Olsson.
+    """
+    epic_list = sorted(stories_by_epic.keys())
+
+    # Done : limiter aux 2 derniers épics pour éviter de noyer le tableau
+    recent_epics: set[int] = set(epic_list[-2:]) if len(epic_list) >= 2 else set(epic_list)
+
+    buckets: dict[str, list[dict]] = {
+        "backlog": [], "ready-for-dev": [], "in-progress": [], "review": [], "done": [],
+    }
+    for en, stories in sorted(stories_by_epic.items()):
+        for s in stories:
+            status = s.get("status", "unknown")
+            if status == "done":
+                if en in recent_epics:
+                    buckets["done"].append(s)
+            elif status in buckets:
+                buckets[status].append(s)
+
+    def _card(s: dict, checked: bool = False) -> str:
+        sid = s.get("story_id", "?")
+        title = s.get("title_en", s["stem"])
+        mark = "x" if checked else " "
+        # Hors tableau → label autorisé dans le wikilink
+        return f"- [{mark}] {_wikilink(s['path'], f'{sid} — {title}')}"
+
+    lines = [
+        "---",
+        "",
+        "kanban-plugin: basic",
+        "",
+        "---",
+        "",
+        "## Backlog",
+        "",
+    ]
+    backlog_all = buckets["backlog"] + buckets["ready-for-dev"]
+    lines += [_card(s) for s in backlog_all] or ["_vide_"]
+
+    lines += ["", "## In Progress", ""]
+    lines += [_card(s) for s in buckets["in-progress"]] or ["_vide_"]
+
+    lines += ["", "## Review", ""]
+    lines += [_card(s) for s in buckets["review"]] or ["_vide_"]
+
+    lines += ["", "## Done", "", "**Complete**"]
+    lines += [_card(s, checked=True) for s in buckets["done"]] or ["_vide_"]
+
+    lines += [
+        "",
+        '%% kanban:settings',
+        '```',
+        '{"kanban-plugin":"basic"}',
+        '```',
+        "%%",
+    ]
+
+    (NAV / "kanban.md").write_text("\n".join(lines), encoding="utf-8")
+
+
 # ─── Canvas : Sprint actif ────────────────────────────────────────────────────
 
 def gen_sprint_canvas(
@@ -829,6 +900,7 @@ def generate_all() -> None:
     gen_icebox_map(icebox_data, now)
     gen_hierarchy_canvas(stories_by_epic, epic_statuses, now)
     gen_sprint_canvas(stories_by_epic, epic_statuses, now)
+    gen_kanban(stories_by_epic, epic_statuses, now)
 
     n_epics = len(stories_by_epic)
     n_stories = sum(len(v) for v in stories_by_epic.values())

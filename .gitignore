@@ -28,6 +28,10 @@ coverage.xml
 htmlcov/
 .scannerwork/
 
+# Obsidian plugin binaries (telecharges par install.py, ne pas versionner)
+.obsidian/plugins/obsidian-kanban/main.js
+.obsidian/plugins/obsidian-kanban/styles.css
+
 # OS
 .DS_Store
 Thumbs.db
